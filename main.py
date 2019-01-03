@@ -228,7 +228,6 @@ class App(object):
         self.keys = pg.key.get_pressed()
         self.player = myShip(self.screen_rect.center, 100)
         self.objects = self.make_objects()
-        self.numMods = 0
         self.mods = self.make_mods()
 
     def make_objects(self):
@@ -239,7 +238,6 @@ class App(object):
 
     def make_mods(self):
         mods=[mod(-2,0,["flame","right"]),mod(-1,1, ["flame","down"]),mod(-1,0,["thrust",""]),mod(0,0,["struct",""]),mod(1,0,["thrust",""]),mod(2,0,["flame","left"]), mod(1,-1, ["flame", "up"])]
-        self.numMods=len(mods)
         return pg.sprite.Group(mods)
 
     def event_loop(self):
