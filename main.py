@@ -178,23 +178,15 @@ class mod(pg.sprite.Sprite):
 
     def neighborCheck(self, mods):
         modList=mods.sprites()
-        for i in modList:
-            if i.layout_x-self.layout_x==1:
+        for i in modList: #MAKE SURE THE OTHER COORDINATE IS THE SAME!!!!!
+            if i.layout_x-self.layout_x==1 and i.layout_y==self.layout_y:
                 self.neighbors["right"]=True
-            else:
-                self.neighbors["right"]=False
-            if i.layout_x-self.layout_x==-1:
+            if i.layout_x-self.layout_x==-1 and i.layout_y==self.layout_y:
                 self.neighbors["left"]=True
-            else:
-                self.neighbors["left"]=False
-            if i.layout_y-self.layout_y==1:
+            if i.layout_y-self.layout_y==-1 and i.layout_x==self.layout_x:
                 self.neighbors["top"]=True
-            else:
-                self.neighbors["top"]=False
-            if i.layout_y-self.layout_y==-1:
+            if i.layout_y-self.layout_y==1 and i.layout_x==self.layout_x:
                 self.neighbors["bot"]=True
-            else:
-                self.neighbors["bot"]=False
 
     def thrust(self, firing, direct):
         self.firing= not self.firing
