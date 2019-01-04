@@ -20,16 +20,18 @@ DIRECT_DICT = {pg.K_a: (-1, 0),
                pg.K_d: (1, 0),
                pg.K_w: (0,-1),
                pg.K_s: (0, 1)}
+FIRE_KEY=pg.K_SPACE
 
+SHIPSPEED = 500
 ANGLE_UNIT_SPEED = math.sqrt(2)/2
 
 MODSIZE=(20,20)
 
-addMod={"nCheck":False, "nProts":0, "killAll":False, "typ":"", "x":0, "y":0, "protsDispl":False}
+addMod={"nCheck":False, "nProts":0, "killAll":False, "typ":"", "x":0, "y":0, "protsDispl":False, "add":False, "direct":"up"}
 mx=0
 my=0
-gobble={"x":0,"y":0,"add":False}
-
+gobble={"x":0,"y":0,"add":False,"typ":""}
+addShot={"add":False, "origin_Layout":(0,0), "typ":"", "diam":0, "direct":"", "speedFactor":10}
 status="original"
 
 class eatCircle(pg.sprite.Sprite):
@@ -43,9 +45,9 @@ class eatCircle(pg.sprite.Sprite):
         self.distX=0
         self.distY=0
         self.rect=pg.Rect((0,0), eatCircle.SIZE)
+        self.typ=typ
         self.image=self.make_image()
         self.mask=self.make_mask()
-        self.typ=typ
 
     def make_image(self):
 
@@ -66,22 +68,25 @@ class eatCircle(pg.sprite.Sprite):
         self.rect=self.image.get_rect()
         return mask
 
-    def update(self, playerX, playerY, mods):
+    def update(self, playerX, playerY, mods, projectiles):
         self.distX=self.x-playerX
         self.distY=self.y+playerY
         self.printX=self.screen_rect.center[0]+self.distX
         self.printY=self.screen_rect.center[1]+self.distY
         self.rect.center=(self.printX,self.printY)
-        if pg.sprite.spritecollide(self, mods, False):
+        if pg.sprite.spritecollide(self, mods, False):# or pg.sprite.spritecollide(self,projectiles,False):
             global addMod, gobble
             gobble["add"]=True
             gobble["x"]=self.x
-            gobble["y"]=-self.y+100
+            gobble["y"]=-self.y+200
+            gobble["typ"]=self.typ
             addMod["nProts"]+=1
             addMod["nCheck"]=True
             addMod["typ"]=self.typ
+            #print("gobbled. typ="+self.typ+"x,y="+str(self.x)+", "+str(self.y))
             #print ("stat: "+status+".Gobble killing self. nCheck=True. Prots(just added):"+str(addMod["nProts"])+"\n") #DEBUG
             self.kill()
+
 
     def draw(self, surface):
         surface.blit(self.image, self.rect)
@@ -108,19 +113,31 @@ class myShip(object):
         self.y -= vector[1]*frame_speed
 
 class Projectile(pg.sprite.Sprite):
-    def __init__(self, x, y, diam, direct, playerX, playerY, typ="bullet"):
+    def __init__(self, x, y, diam, direct, playerX, playerY, time, speedFactor, typ="bullet"):
         global MODSIZE
         pg.sprite.Sprite.__init__(self)
+        #print("projectile created. x="+str(x)+", y="+str(y))
         self.screen = pg.display.get_surface()
+        self.speedFactor=speedFactor
+        self.initTime=time
+        self.typ=typ
+        self.diam=diam
         self.screen_rect = self.screen.get_rect()
-        self.direct=direct
+        if direct=="up":
+            self.direct=(0,1)
+        elif direct=='down':
+            self.direct=(0,-1)
+        elif direct=='left':
+            self.direct=(1,0)
+        else:
+            self.direct=(-1,0)
         self.distX=0
         self.distY=0
-        self.rect=pg.Rect((0,0), size)
-        self.rect.center=(x*MODSIZE, -y*MODSIZE)
+        self.rect=pg.Rect((0,0), (diam,diam))
         self.image=self.make_image()
         self.mask=self.make_mask()
-        self.typ=typ
+        self.rect.center=(int(self.screen_rect.center[0]+playerX+(x-self.direct[0])*MODSIZE[0]), int(self.screen_rect.center[1]-playerY+(-y-self.direct[1])*MODSIZE[1]))
+        self.origin=self.rect.center
 
     def make_image(self):
 
@@ -139,21 +156,13 @@ class Projectile(pg.sprite.Sprite):
         self.rect=self.image.get_rect()
         return mask
 
-    def update(self, playerX, playerY, mods):
-        self.distX=self.x-playerX
-        self.distY=self.y+playerY
-        self.printX=self.screen_rect.center[0]+self.distX
-        self.printY=self.screen_rect.center[1]+self.distY
+    def update(self, playerX, playerY, time):
+        factor=0.01*(time-self.initTime)*self.speedFactor
+        self.distX=int(playerX+self.direct[0]*factor)
+        self.distY=int(playerY-self.direct[1]*factor)
+        self.printX=self.origin[0]-self.distX
+        self.printY=self.origin[1]+self.distY
         self.rect.center=(self.printX,self.printY)
-        if pg.sprite.spritecollide(self, mods, False):
-            global addMod, gobble
-            gobble["add"]=True
-            gobble["x"]=self.x
-            gobble["y"]=-self.y+100
-            addMod["nProts"]+=1
-            addMod["nCheck"]=True
-            #print ("stat: "+status+".Gobble killing self. nCheck=True. Prots(just added):"+str(addMod["nProts"])+"\n") #DEBUG
-            self.kill()
 
     def draw(self, surface):
         surface.blit(self.image, self.rect)
@@ -162,17 +171,23 @@ class Mod(pg.sprite.Sprite):
     def __init__(self, x, y, typ, size=MODSIZE):
         pg.sprite.Sprite.__init__(self)
         self.typ=typ
+        #if typ[0]=="struct":
+            #print("adding struct: layX="+str(x)+", layY="+str(y))
         self.layout_x=x
         self.layout_y=y
         self.screen = pg.display.get_surface()
         self.screen_rect = self.screen.get_rect()
         self.size=size
         self.rect=pg.Rect((0,0), size)
+        self.rect.center=self.findPosition()
         self.image=self.make_image()
         self.mask=self.make_mask()
         self.rect.center=self.findPosition()
         self.firing=False
         self.neighbors = {"top":None, "left":None, "right":None, "bot":None}
+        self.last_shot_time=0
+        self.addShot={"add":False, "origin_Layout":(0,0), "typ":"", "diam":0, "direct":"", "speedFactor":10}
+        self.priority=""
 
     def findPosition(self):
         return (self.screen_rect.center[0]+self.layout_x*self.size[0],self.screen_rect.center[1]-self.layout_y*self.size[1])
@@ -181,6 +196,7 @@ class Mod(pg.sprite.Sprite):
         image = pg.Surface(self.rect.size).convert_alpha()
         image.fill(TRANSPARENT)
         image_rect = image.get_rect()
+        #print("imaging")
 
         if self.typ[0]=="struct":
             pg.draw.rect(image, pg.Color("black"), image_rect)
@@ -194,6 +210,9 @@ class Mod(pg.sprite.Sprite):
             pg.draw.rect(image,pg.Color("gray"), image_rect)
             pg.draw.rect(image, pg.Color("green"), image_rect.inflate(-int(self.size[0]/3), -int(self.size[1]/3)))
 
+        elif self.typ[0]=="gun0":
+            pg.draw.rect(image,pg.Color("gray"), image_rect)
+
         return image
 
     def make_mask(self):
@@ -201,7 +220,7 @@ class Mod(pg.sprite.Sprite):
         self.rect=self.image.get_rect()
         return mask
 
-    def update(self, keys, mods):
+    def update(self, keys, mods, time):
         vector = [0, 0]
         for key in DIRECT_DICT:
             if keys[key]:
@@ -236,16 +255,29 @@ class Mod(pg.sprite.Sprite):
                 else:
                     if vector[0]<=0:
                         self.thrust(False,"right")
+
+        elif self.typ[0]=="gun0":
+            #print("i am a gun facing: "+self.typ[1])
+            global FIRE_KEY
+            if keys[FIRE_KEY] and time-self.last_shot_time>300:
+                #print("FIREKEY DETECTED")
+                self.addShot["add"]=True
+                self.addShot["direct"]=self.typ[1]
+                self.addShot["origin_Layout"]=(self.layout_x,self.layout_y)
+                self.addShot["typ"]="bullet"
+                self.addShot["diam"]=10
+                self.last_shot_time=time
+
         global addMod
         if addMod["nCheck"] and not self.typ[0]=="flame" and not self.typ[0]=="prot":
             self.neighborCheck(mods)
             #print("(NCHECKING)")
 
         if addMod["nProts"] and self.typ[0]=="prot":
-            self.prototypeWatch()
+            self.prototypeWatch(mods)
 
 
-    def prototypeWatch(self):
+    def prototypeWatch(self, mods):
         global mx, my, addMod, status
         mx, my = pg.mouse.get_pos()
         clicks= pg.mouse.get_pressed()
@@ -253,34 +285,58 @@ class Mod(pg.sprite.Sprite):
         #c=self.rect.center
 
         if (mx>(self.rect.centerx-self.size[0]/2)) and (mx < (self.rect.centerx+self.size[0]/2))and (my>(self.rect.centery-self.size[1]/2)) and (my < (self.rect.centery+self.size[1]/2)) and clicks[0]:
+            self.neighborCheck(mods, True)
+            #print(self.neighbors["bot"])
             #print("\n\njust detected a hover. original status:\n")
             #print ("stat: "+status+". neighCheck="+str(addMod["nCheck"])+" Prots:"+str(addMod["nProts"])+"\n") #DEBUG
             addMod["nProts"] -= 1
             if not addMod["nProts"]:
                 addMod["killAll"] = True
             #addMod["nCheck"] = True
-            addMod["typ"] = "struct"
             addMod["x"] = self.layout_x
             addMod["y"] = self.layout_y
+            addMod["add"] = True
+
+            if self.priority:
+                addMod["direct"]=self.priority
+            elif self.neighbors["top"]:
+                addMod["direct"]="down"
+            elif self.neighbors["bot"]:
+                addMod["direct"]="up"
+            elif self.neighbors["left"]:
+                addMod["direct"]="right"
+            else:
+                addMod["direct"]="left"
+            #print("y:"+str(self.layout_y))
             status+="-delProt"
             #print("new stat: "+status+". neighCheck="+str(addMod["nCheck"])+". Prots:"+str(addMod["nProts"])+"\n") #DEBUG
             self.kill()
 
-    def neighborCheck(self, mods):
+    def neighborCheck(self, mods, rotationCheck=False):
         for key in self.neighbors:
             self.neighbors[key]=False
         modList=mods.sprites()
         for i in modList: #MAKE SURE THE OTHER COORDINATE IS THE SAME!!!!!
-            if i.layout_x-self.layout_x==1 and i.layout_y==self.layout_y:
-                self.neighbors["right"]=True
-            if i.layout_x-self.layout_x==-1 and i.layout_y==self.layout_y:
-                self.neighbors["left"]=True
-            if i.layout_y-self.layout_y==1 and i.layout_x==self.layout_x:
-                self.neighbors["top"]=True
-            if i.layout_y-self.layout_y==-1 and i.layout_x==self.layout_x:
-                self.neighbors["bot"]=True
+            if (not rotationCheck) or ((not i.typ[0]=="flame") and (not i.typ[0]=="prot")):
+                if i.layout_x-self.layout_x==1 and i.layout_y==self.layout_y:
+                    self.neighbors["right"]=True
+                    if i.typ[0]=="struct" and rotationCheck:
+                        self.priority="left"
+                if i.layout_x-self.layout_x==-1 and i.layout_y==self.layout_y:
+                    self.neighbors["left"]=True
+                    if i.typ[0]=="struct" and rotationCheck:
+                        self.priority="right"
+                if i.layout_y-self.layout_y==1 and i.layout_x==self.layout_x:
+                    self.neighbors["top"]=True
+                    if i.typ[0]=="struct" and rotationCheck:
+                        self.priority="down"
+                if i.layout_y-self.layout_y==-1 and i.layout_x==self.layout_x:
+                    self.neighbors["bot"]=True
+                    if i.typ[0]=="struct" and rotationCheck:
+                        self.priority="up"
+                    #print("Im a "+str(self.typ[0])+" and found a "+str(i.typ[0]))
 
-            print("done nCheck from: "+i.typ[0]+": " + str(i.layout_x)+", "+str(i.layout_y))
+            #print("done nCheck from: "+i.typ[0]+": " + str(i.layout_x)+", "+str(i.layout_y))
     def thrust(self, firing, direct):
         self.firing= not self.firing
         image = pg.Surface(self.size).convert_alpha()
@@ -319,14 +375,16 @@ class App(object):
         self.fps = 60
         self.done = False
         self.keys = pg.key.get_pressed()
-        self.player = myShip(self.screen_rect.center, 100)
+        global SHIPSPEED
+        self.player = myShip(self.screen_rect.center, SHIPSPEED)
         self.objects = self.make_objects()
         self.mods = self.make_mods()
+        self.projectiles = pg.sprite.Group()
 
     def make_objects(self):
         #objects = [randomObject(400,400), randomObject(300,270), randomObject(150,170)]
         #objects.append(randomObject(0,150))
-        objects=[eatCircle(0,100)]
+        objects=[eatCircle(0,100), eatCircle(-100,0,"gun0")]
         return pg.sprite.Group(objects)
 
     def make_mods(self):
@@ -344,11 +402,12 @@ class App(object):
         self.screen.fill(pg.Color("white"))
         self.objects.draw(self.screen)
         self.mods.draw(self.screen)
+        self.projectiles.draw(self.screen)
         global addMod, mx, my
-        textsurface_x = myfont.render('neighborCheck: ' + str(addMod["nCheck"]) +', prototypes: '+ str(addMod["nProts"]), False, (0, 0, 0))
+        textsurface_x = myfont.render('prototypes: '+ str(addMod["nProts"]), False, (0, 0, 0))
         self.screen.blit(textsurface_x,(0,0))
-        textsurface_y = myfont.render('mx:' + str(mx) + ' my: ' + str(my), False, (0, 0, 0))
-        self.screen.blit(textsurface_y,(0,30))
+        #textsurface_y = myfont.render('mx:' + str(mx) + ' my: ' + str(my), False, (0, 0, 0))
+        #self.screen.blit(textsurface_y,(0,30))
         pg.display.update()
 
     def main_loop(self):
@@ -356,10 +415,19 @@ class App(object):
         dt = 0.0
         while not self.done:
             global addMod, status
+            current_time=pg.time.get_ticks()
             self.event_loop()
             self.player.update(self.screen_rect, self.keys, dt)
-            self.mods.update(self.keys, self.mods)
+            self.mods.update(self.keys, self.mods, current_time)
             #print ("stat: "+status+". UPDATING MODS. neighChk:"+str(addMod["nCheck"])+", Prots:"+str(addMod["nProts"])+"\n") #DEBUG
+
+            for mod in self.mods:
+                if mod.addShot["add"]:
+                    self.projectiles.add(Projectile(mod.addShot["origin_Layout"][0],mod.addShot["origin_Layout"][1],mod.addShot["diam"],mod.addShot["direct"], self.player.x, self.player.y, current_time, mod.addShot["speedFactor"], mod.addShot["typ"]))
+                    mod.addShot["add"]=False
+
+            self.projectiles.update(self.player.x,self.player.y,current_time)
+
             if addMod["nCheck"]:
                 addMod["nCheck"]=False
                 #print ("stat: "+status+". Turning off neighborcheck-literally nothing else. Prots:"+str(addMod["nProts"])+"\n") #DEBUG
@@ -370,18 +438,18 @@ class App(object):
                     if not (i.typ[0]=="prot" or i.typ[0]=="flame"):
                         if not i.neighbors["top"]:
                             self.mods.add(Mod(i.layout_x, i.layout_y+1, ["prot",""]))
-                            print("adding top from: "+i.typ[0]+": "+ str(i.layout_x)+", "+str(i.layout_y))
+                            #print("adding top from: "+i.typ[0]+": "+ str(i.layout_x)+", "+str(i.layout_y))
                         if not i.neighbors["bot"]:
                             self.mods.add(Mod(i.layout_x, i.layout_y-1, ["prot",""]))
-                            print("adding bot from: "+i.typ[0]+": " + str(i.layout_x)+", "+str(i.layout_y))
+                            #print("adding bot from: "+i.typ[0]+": " + str(i.layout_x)+", "+str(i.layout_y))
                         if not i.neighbors["right"]:
                             self.mods.add(Mod(i.layout_x+1, i.layout_y, ["prot",""]))
-                            print("adding right from: "+i.typ[0]+": " + str(i.layout_x)+", "+str(i.layout_y))
+                            #print("adding right from: "+i.typ[0]+": " + str(i.layout_x)+", "+str(i.layout_y))
                         if not i.neighbors["left"]:
                             self.mods.add(Mod(i.layout_x-1, i.layout_y, ["prot",""]))
-                            print("adding left from: "+i.typ[0]+": " + str(i.layout_x)+", "+str(i.layout_y))
-                        print("done checking from: "+i.typ[0]+": " + str(i.layout_x)+", "+str(i.layout_y))
-                print("done displaying prots\n")
+                            #print("adding left from: "+i.typ[0]+": " + str(i.layout_x)+", "+str(i.layout_y))
+                        #print("done checking from: "+i.typ[0]+": " + str(i.layout_x)+", "+str(i.layout_y))
+                #print("done displaying prots\n")
 
                 addMod["protsDispl"]=True
                 #print ("stat: "+status+". Just displayed prots. Also neighCheck is still off. Prots:"+str(addMod["nProts"])+"\n") #DEBUG
@@ -392,17 +460,19 @@ class App(object):
                     if i.typ[0]=="prot":
                         i.kill()
                     addMod["killAll"]=False
-            if addMod["typ"]:
+            if addMod["add"]:
                 status+="+adSeg"
-                #print ("ADDING SEGMENT. stat: "+status+". neighCheck=True  Prots:"+str(addMod["nProts"])+"\n") #DEBUG
-                self.mods.add(Mod(addMod["x"],addMod["y"],[addMod["typ"],""]))
+                #print ("ADDING SEGMENT.") #DEBUG
+                self.mods.add(Mod(addMod["x"],addMod["y"],[addMod["typ"],addMod["direct"]]))
                 #addMod["nCheck"]=True
                 addMod["typ"]=""
+                addMod["add"]=False
+                addMod["killAll"]=True
 
-            self.objects.update(self.player.x, self.player.y, self.mods)
+            self.objects.update(self.player.x, self.player.y, self.mods, self.projectiles)
             global gobble
             if gobble["add"]:
-                self.objects.add(eatCircle(gobble["x"],gobble["y"]))
+                self.objects.add(eatCircle(gobble["x"],gobble["y"],gobble["typ"]))
                 gobble["add"]=False
                 #addMod["nCheck"]=True
                 #print ("stat: "+status+". Adding gobble. neighCheck=True. Prots:"+str(addMod["nProts"])+"\n") #DEBUG
